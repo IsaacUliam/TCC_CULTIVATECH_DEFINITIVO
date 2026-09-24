@@ -5,6 +5,7 @@ import plantRoutes from "./plant.routes";
 import cropRoutes from "./crop.routes";
 import sensorReadingRoutes from "./sensor-reading.routes";
 import authRoutes from "./auth.routes";
+import dashboardRoutes from "./dashboard.routes";
 
 import CropController from "../controllers/CropController";
 
@@ -39,8 +40,10 @@ routes.get(
 );
 
 routes.use(
-"/auth",
-authRoutes
+  "/auth",
+  authRoutes
 );
+
+routes.use(dashboardRoutes);
 
 export default routes;

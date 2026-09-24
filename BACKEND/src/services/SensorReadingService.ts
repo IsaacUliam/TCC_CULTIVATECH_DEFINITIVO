@@ -1,103 +1,61 @@
 import database from "../database/connection";
-
-import {
-  CreateSensorReadingDTO
-} from "../models/SensorReading";
+import { CreateSensorReadingDTO } from "../models/SensorReading";
 
 class SensorReadingService {
+  // Criar leitura vinda da API / App (usando device_code)
   async create(data: CreateSensorReadingDTO) {
-    const {
-      device_code,
-      humidity,
-      ph,
-      salinity
-    } = data;
+    const { device_code, humidity, ph, salinity } = data;
 
     const crop = await database("my_crops")
       .where({ device_code })
       .first();
 
     if (!crop) {
-      throw new Error("Dispositivo não encontrado");
+      throw new Error("Dispositivo não vinculado a nenhum cultivo.");
     }
 
     const [id] = await database("sensor_readings").insert({
       crop_id: crop.id,
       humidity_value: humidity,
       ph_value: ph,
-      salinity_value: salinity
+      salinity_value: salinity,
     });
 
-    return this.findById(id);
+    return database("sensor_readings").where({ id }).first();
   }
 
-  async findById(id: number) {
-    const reading = await database("sensor_readings")
-      .where({ id })
-      .first();
-
-    if (!reading) {
-      throw new Error("Leitura não encontrada");
-    }
-
-    return reading;
-  }
-
-  async listByCrop(cropId: number) {
+  // Buscar histórico de um cultivo do usuário logado
+  async listByCrop(cropId: number, userId: number) {
     const crop = await database("my_crops")
-      .where({ id: cropId })
+      .where({ id: cropId, user_id: userId })
       .first();
 
     if (!crop) {
-      throw new Error("Cultivo não encontrado");
+      throw new Error("Cultivo não encontrado.");
     }
 
-    const readings = await database("sensor_readings")
+    return database("sensor_readings")
       .where({ crop_id: cropId })
       .orderBy("created_at", "desc");
-
-    return readings;
   }
 
-  async latestByCrop(cropId: number) {
+  // Buscar a última leitura de um cultivo do usuário logado
+  async latestByCrop(cropId: number, userId: number) {
     const crop = await database("my_crops")
-      .where({ id: cropId })
+      .where({ id: cropId, user_id: userId })
       .first();
 
     if (!crop) {
-      throw new Error("Cultivo não encontrado");
+      throw new Error("Cultivo não encontrado.");
     }
 
     const reading = await database("sensor_readings")
       .where({ crop_id: cropId })
       .orderBy("created_at", "desc")
-      .orderBy("id", "desc")
       .first();
 
     if (!reading) {
-      throw new Error("Nenhuma leitura encontrada");
-    }
-
-    return reading;
-  }
-
-  async latestByDevice(deviceCode: string) {
-    const crop = await database("my_crops")
-      .where({ device_code: deviceCode })
-      .first();
-
-    if (!crop) {
-      throw new Error("Dispositivo não encontrado");
-    }
-
-    const reading = await database("sensor_readings")
-      .where({ crop_id: crop.id })
-      .orderBy("created_at", "desc")
-      .orderBy("id", "desc")
-      .first();
-
-    if (!reading) {
-      throw new Error("Nenhuma leitura encontrada");
+      throw new Error("Nenhuma leitura encontrada para este cultivo.");
     }
 
     return reading;

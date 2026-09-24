@@ -1,88 +1,34 @@
-import bcrypt from "bcryptjs";
+import bcrypt from 'bcryptjs';
+import db from '../database/connection'; // Ajuste o caminho da conexão com Knex se necessário
+import { generateToken } from '../utils/jwt';
 
-import database from "../database/connection";
+export class AuthService {
+  async login(email: string, password: unknown) {
+    if (!email || !password || typeof password !== 'string') {
+      throw new Error('E-mail e senha são obrigatórios.');
+    }
 
-import {
-    generateToken
-} from "../utils/jwt";
+    const user = await db('users').where({ email }).first();
 
+    if (!user) {
+      throw new Error('Usuário ou senha inválidos.');
+    }
 
-class AuthService {
+    const isPasswordValid = await bcrypt.compare(password, user.password_hash);
 
+    if (!isPasswordValid) {
+      throw new Error('Usuário ou senha inválidos.');
+    }
 
-async login(
-email:string,
-password:string
-){
+    const token = generateToken({ id: user.id, email: user.email });
 
-
-const user =
-await database("users")
-.where({
-    email
-})
-.first();
-
-
-
-if(!user){
-
-throw new Error(
-"Usuário ou senha inválidos"
-);
-
+    return {
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+      },
+      token,
+    };
+  }
 }
-
-
-
-const passwordMatch =
-await bcrypt.compare(
-password,
-user.password_hash
-);
-
-
-
-if(!passwordMatch){
-
-throw new Error(
-"Usuário ou senha inválidos"
-);
-
-}
-
-
-
-const token =
-generateToken({
-
-id:user.id,
-
-email:user.email
-
-});
-
-
-
-return {
-
-user:{
-id:user.id,
-name:user.name,
-email:user.email
-},
-
-token
-
-};
-
-
-}
-
-
-
-}
-
-
-
-export default new AuthService();

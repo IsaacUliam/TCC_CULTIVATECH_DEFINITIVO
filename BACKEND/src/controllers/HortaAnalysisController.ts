@@ -2,9 +2,7 @@ import { Request, Response } from "express";
 
 import HortaAnalysisService from "../services/HortaAnalysisService";
 
-
 class HortaAnalysisController {
-
 
 async show(
 request:Request,
