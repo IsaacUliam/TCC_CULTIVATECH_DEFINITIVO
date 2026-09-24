@@ -18,8 +18,23 @@ export function LoginScreen() {
       setSubmitting(true);
       await signIn(email, password);
     } catch (error: any) {
-      const errorMsg = error.response?.data?.message || 'Erro ao realizar login. Verifique suas credenciais.';
-      Alert.alert('Erro no Login', errorMsg);
+      // 1. O servidor respondeu com status de erro (ex: 400, 401, 404, 500)
+      if (error.response) {
+        const status = error.response.status;
+        const message = error.response.data?.message || 'Credenciais inválidas ou erro no servidor.';
+        Alert.alert(`Erro API (${status})`, message);
+      } 
+      // 2. A requisição foi enviada, mas NÃO recebeu resposta (Problema de Rede / CORS / URL)
+      else if (error.request) {
+        Alert.alert(
+          'Erro de Conexão (Rede)',
+          'Não foi possível conectar ao servidor.\n\nVerifique se:\n1. A porta 3333 no Codespaces está como PUBLIC.\n2. A URL em src/services/api.ts começa com https://.'
+        );
+      } 
+      // 3. Erro interno ao montar a requisição
+      else {
+        Alert.alert('Erro Inesperado', error.message || 'Ocorreu um erro ao processar a requisição.');
+      }
     } finally {
       setSubmitting(false);
     }
