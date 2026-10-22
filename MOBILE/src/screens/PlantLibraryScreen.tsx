@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Linking,
   StatusBar,
   StyleSheet,
   Text,
@@ -11,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { plantReferenceData } from "./PlantReferenceData";
 
 export type PlantDifficulty =
   | "Muito fácil"
@@ -24,6 +26,20 @@ export interface PlantCatalogEntry {
   categoryId: string;
   varieties?: string[];
   note?: string;
+  referenceNotes?: string;
+  airHumidityRange?: string;
+  temperatureRangeC?: string;
+  growthCycleDays?: string;
+  cycleBasis?: string;
+  confidence?: "high" | "medium" | "low";
+  sources?: PlantReferenceSource[];
+}
+
+export interface PlantReferenceSource {
+  title: string;
+  publisher: string;
+  url: string;
+  supports: string;
 }
 
 interface PlantLibraryScreenProps {
@@ -96,7 +112,7 @@ const categories: PlantCategory[] = [
   },
 ];
 
-const plants: PlantCatalogEntry[] = [
+const basePlants: PlantCatalogEntry[] = [
   // Hortaliças de folhas
   {
     id: "alface",
@@ -318,6 +334,11 @@ const plants: PlantCatalogEntry[] = [
   { id: "violas", name: "Violas", categoryId: "flores" },
 ];
 
+const plants: PlantCatalogEntry[] = basePlants.map((plant) => ({
+  ...plant,
+  ...plantReferenceData[plant.id],
+}));
+
 const difficultyFilters: Array<"Todas" | PlantDifficulty> = [
   "Todas",
   "Muito fácil",
@@ -331,6 +352,123 @@ function normalizeSearch(value: string) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLocaleLowerCase("pt-BR");
+}
+
+function PlantMetric({
+  icon,
+  label,
+  value,
+  wide = false,
+}: {
+  icon: "wind" | "thermometer" | "clock";
+  label: string;
+  value: string;
+  wide?: boolean;
+}) {
+  return (
+    <View style={[styles.growthMetric, wide && styles.growthMetricWide]}>
+      <View style={styles.growthMetricLabelRow}>
+        <Feather name={icon} size={13} color="#5E8068" />
+        <Text style={styles.growthMetricLabel}>{label}</Text>
+      </View>
+      <Text style={styles.growthMetricValue}>{value}</Text>
+    </View>
+  );
+}
+
+function PlantReferenceNotes({ notes }: { notes: string }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <View style={styles.referenceDetails}>
+      <TouchableOpacity
+        style={styles.referenceToggle}
+        onPress={() => setExpanded((value) => !value)}
+        accessibilityRole="button"
+        accessibilityLabel={
+          expanded ? "Ocultar nota técnica" : "Ver nota técnica"
+        }
+      >
+        <Feather
+          name={expanded ? "chevron-up" : "info"}
+          size={13}
+          color="#52745D"
+        />
+        <Text style={styles.referenceToggleText}>
+          {expanded ? "Ocultar observação técnica" : "Observação técnica"}
+        </Text>
+      </TouchableOpacity>
+      {expanded && <Text style={styles.referenceNotesText}>{notes}</Text>}
+    </View>
+  );
+}
+
+function PlantReferenceSources({
+  sources,
+}: {
+  sources: PlantReferenceSource[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <View style={styles.referenceDetails}>
+      <TouchableOpacity
+        style={styles.referenceToggle}
+        onPress={() => setExpanded((value) => !value)}
+        accessibilityRole="button"
+        accessibilityLabel={
+          expanded
+            ? "Ocultar referências técnicas"
+            : `Ver ${sources.length} referências técnicas`
+        }
+      >
+        <Feather
+          name={expanded ? "chevron-up" : "book-open"}
+          size={13}
+          color="#52745D"
+        />
+        <Text style={styles.referenceToggleText}>
+          {expanded
+            ? "Ocultar fontes"
+            : `Ver fontes técnicas (${sources.length})`}
+        </Text>
+      </TouchableOpacity>
+      {expanded && (
+        <View style={styles.referenceSourceList}>
+          {sources.map((source, index) => (
+            <TouchableOpacity
+              key={`${source.url}-${index}`}
+              style={styles.referenceSourceItem}
+              onPress={() =>
+                Linking.openURL(source.url).catch(() =>
+                  Alert.alert("Link indisponível", source.title),
+                )
+              }
+              accessibilityRole="link"
+              accessibilityLabel={`Abrir ${source.title}, ${source.publisher}`}
+            >
+              <Text style={styles.referenceSourcePublisher}>
+                {source.publisher}
+              </Text>
+              <Text style={styles.referenceSourceTitle}>{source.title}</Text>
+              <Text style={styles.referenceSourceSupports}>
+                {source.supports}
+              </Text>
+              <Text style={styles.referenceSourceOpen}>ABRIR FONTE ↗</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function formatReferenceValue(value?: string) {
+  if (!value) return "Não informado";
+  if (/^não localizad[oa]/i.test(value.trim())) {
+    return "Sem faixa confiável disponível";
+  }
+  return value;
 }
 
 export function PlantLibraryScreen({
@@ -441,6 +579,9 @@ export function PlantLibraryScreen({
 
     const wasAdded = addedPlantIds.includes(item.id);
     const isAdding = addingPlantId === item.id;
+    const confidenceLabel = item.confidence
+      ? { high: "Boa", medium: "Média", low: "Limitada" }[item.confidence]
+      : null;
 
     return (
       <View style={styles.plantCard}>
@@ -488,6 +629,39 @@ export function PlantLibraryScreen({
           </Text>
         )}
         {!!item.note && <Text style={styles.plantNote}>{item.note}</Text>}
+
+        <View style={styles.growthMetrics}>
+          <PlantMetric
+            icon="wind"
+            label="Umidade relativa do ar"
+            value={formatReferenceValue(item.airHumidityRange)}
+          />
+          <PlantMetric
+            icon="thermometer"
+            label="Temperatura do ar"
+            value={formatReferenceValue(item.temperatureRangeC)}
+          />
+          <PlantMetric
+            icon="clock"
+            label="Ciclo médio"
+            value={formatReferenceValue(item.growthCycleDays)}
+            wide
+          />
+        </View>
+        {!!item.cycleBasis && (
+          <Text style={styles.cycleBasis}>Período: {item.cycleBasis}</Text>
+        )}
+        {!!confidenceLabel && (
+          <Text style={styles.confidenceText}>
+            Nível de evidência: {confidenceLabel}
+          </Text>
+        )}
+        {!!item.referenceNotes && (
+          <PlantReferenceNotes notes={item.referenceNotes} />
+        )}
+        {!!item.sources?.length && (
+          <PlantReferenceSources sources={item.sources} />
+        )}
 
         <View style={styles.systemRow}>
           <Feather name="droplet" size={14} color="#5E8068" />
@@ -570,13 +744,20 @@ export function PlantLibraryScreen({
               </View>
               <Text style={styles.introTitle}>Encontre sua próxima planta</Text>
               <Text style={styles.introText}>
-                Explore espécies, variedades, dificuldade e o sistema de cultivo
-                indicado para cada grupo.
+                O catálogo apresenta espécies disponíveis para cultivo. Cada
+                ficha traz referências de umidade relativa do ar, temperatura e
+                ciclo médio para ajudar você a escolher o que plantar.
               </Text>
               <Text style={styles.catalogCount}>
                 {plants.length} opções no catálogo
               </Text>
             </View>
+
+            <Text style={styles.referenceNotice}>
+              Em hidroponia, a umidade do solo não se aplica. As fichas mostram
+              referências de umidade relativa e temperatura do ar; os valores
+              podem variar por cultivar, ambiente e fase de crescimento.
+            </Text>
 
             {!hasGarden && (
               <View style={styles.noGardenNotice}>
@@ -821,6 +1002,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 6,
   },
+  referenceNotice: {
+    backgroundColor: "#EFF5EF",
+    borderColor: "#DDE9DE",
+    borderRadius: 12,
+    borderWidth: 1,
+    color: "#5E7462",
+    fontSize: 10,
+    lineHeight: 15,
+    marginBottom: 14,
+    paddingHorizontal: 11,
+    paddingVertical: 10,
+  },
   noGardenNotice: {
     alignItems: "flex-start",
     backgroundColor: "#FFF7E4",
@@ -990,6 +1183,116 @@ const styles = StyleSheet.create({
     fontSize: 9,
     lineHeight: 14,
     marginTop: 7,
+  },
+  growthMetrics: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 11,
+  },
+  growthMetric: {
+    backgroundColor: "#F7F9F7",
+    borderColor: "#E8EEE8",
+    borderRadius: 11,
+    borderWidth: 1,
+    flexBasis: "48%",
+    flexGrow: 1,
+    minHeight: 58,
+    paddingHorizontal: 9,
+    paddingVertical: 8,
+  },
+  growthMetricWide: {
+    flexBasis: "100%",
+  },
+  growthMetricLabelRow: {
+    alignItems: "center",
+    flexDirection: "row",
+  },
+  growthMetricLabel: {
+    color: "#738176",
+    fontSize: 9,
+    fontWeight: "700",
+    marginLeft: 5,
+  },
+  growthMetricValue: {
+    color: "#294A34",
+    fontSize: 11,
+    fontWeight: "800",
+    marginTop: 6,
+  },
+  cycleBasis: {
+    color: "#7E8B81",
+    fontSize: 9,
+    lineHeight: 14,
+    marginTop: 6,
+  },
+  confidenceText: {
+    color: "#718075",
+    fontSize: 9,
+    marginTop: 5,
+  },
+  referenceDetails: {
+    marginTop: 6,
+  },
+  referenceToggle: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    minHeight: 28,
+    paddingVertical: 5,
+  },
+  referenceToggleText: {
+    color: "#3F6F4D",
+    fontSize: 9,
+    fontWeight: "800",
+    marginLeft: 5,
+  },
+  referenceNotesText: {
+    backgroundColor: "#F6F8F6",
+    borderLeftColor: "#8FB59A",
+    borderLeftWidth: 2,
+    color: "#5F7063",
+    fontSize: 9,
+    lineHeight: 14,
+    marginTop: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 8,
+  },
+  referenceSourceList: {
+    gap: 7,
+    marginTop: 3,
+  },
+  referenceSourceItem: {
+    backgroundColor: "#F7F9F7",
+    borderColor: "#E5ECE6",
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 9,
+  },
+  referenceSourcePublisher: {
+    color: "#55705D",
+    fontSize: 8,
+    fontWeight: "800",
+    lineHeight: 12,
+  },
+  referenceSourceTitle: {
+    color: "#294A34",
+    fontSize: 9,
+    fontWeight: "800",
+    lineHeight: 13,
+    marginTop: 3,
+  },
+  referenceSourceSupports: {
+    color: "#66766A",
+    fontSize: 8,
+    lineHeight: 12,
+    marginTop: 4,
+  },
+  referenceSourceOpen: {
+    color: "#2E7549",
+    fontSize: 8,
+    fontWeight: "800",
+    marginTop: 6,
   },
   systemRow: {
     alignItems: "center",

@@ -6,6 +6,7 @@ import cropRoutes from "./crop.routes";
 import sensorReadingRoutes from "./sensor-reading.routes";
 import authRoutes from "./auth.routes";
 import dashboardRoutes from "./dashboard.routes";
+import gardenRoutes from "./garden.routes";
 
 import CropController from "../controllers/CropController";
 
@@ -28,6 +29,8 @@ routes.use("/users", userRoutes);
 routes.use("/plants", plantRoutes);
 
 routes.use("/crops", cropRoutes);
+
+routes.use("/gardens", gardenRoutes);
 
 routes.use(
   "/sensor-readings",

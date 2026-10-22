@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -29,7 +29,7 @@ const bottomTabs = [
     key: "horta",
     label: "Horta",
     icon: "sprout",
-    routes: ["Crops"],
+    routes: ["Crops", "Horta", "CropsScreen"],
     active: false,
   },
   {
@@ -54,6 +54,12 @@ interface TelemetryData {
   salinity: number;
   statusText: string;
   healthHistory: HealthHistoryPoint[];
+}
+
+interface GardenSummary {
+  id: number;
+  name: string;
+  monitoring_enabled: boolean;
 }
 
 interface DashboardScreenProps {
@@ -168,15 +174,52 @@ export function DashboardScreen({
   monitoringEnabled: monitoringEnabledProp,
 }: DashboardScreenProps) {
   const [loading, setLoading] = useState(false);
+  const [gardenRecord, setGardenRecord] = useState<GardenSummary | null>(null);
+  const [gardenLoading, setGardenLoading] = useState(true);
+  const [gardenLoadError, setGardenLoadError] = useState(false);
   const userName =
     userNameProp?.trim() || route?.params?.userName?.trim() || "Cultivador";
-  const gardenName =
+  const routeGardenName =
     gardenNameProp !== undefined ? gardenNameProp : route?.params?.gardenName;
+  const gardenName = routeGardenName?.trim()
+    ? routeGardenName
+    : (gardenRecord?.name ?? null);
   const hasGarden = Boolean(gardenName?.trim());
-  const isMonitoringActive = Boolean(
-    hasGarden &&
-      (monitoringEnabledProp ?? route?.params?.monitoringEnabled ?? false),
-  );
+  const monitoringEnabled =
+    monitoringEnabledProp ??
+    route?.params?.monitoringEnabled ??
+    gardenRecord?.monitoring_enabled ??
+    false;
+  const isMonitoringActive = Boolean(hasGarden && monitoringEnabled);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadGarden() {
+      setGardenLoading(true);
+      setGardenLoadError(false);
+      try {
+        const response = await api.get("/gardens");
+        if (isMounted) {
+          setGardenRecord((response.data ?? null) as GardenSummary | null);
+        }
+      } catch (error) {
+        console.warn("Não foi possível carregar a horta do Dashboard:", error);
+        if (isMounted) setGardenLoadError(true);
+      } finally {
+        if (isMounted) setGardenLoading(false);
+      }
+    }
+
+    void loadGarden();
+    const unsubscribe = navigation?.addListener?.("focus", loadGarden);
+
+    return () => {
+      isMounted = false;
+      unsubscribe?.();
+    };
+  }, [navigation]);
+
   const [telemetry, setTelemetry] = useState<TelemetryData>({
     temp: 26,
     ph: 6.2,
@@ -342,7 +385,13 @@ export function DashboardScreen({
         <View style={styles.locationRow}>
           <Feather name="map-pin" size={14} color="#60806D" />
           <Text style={styles.locationText}>
-            {hasGarden ? gardenName : "Sem Nenhuma Horta"}
+            {gardenLoading && !hasGarden
+              ? "Consultando sua horta..."
+              : gardenLoadError && !hasGarden
+                ? "Horta indisponível"
+                : hasGarden
+                  ? gardenName
+                  : "Sem Nenhuma Horta"}
           </Text>
           <View style={styles.locationDivider} />
           <View
@@ -354,9 +403,13 @@ export function DashboardScreen({
               !isMonitoringActive && styles.offlineText,
             ]}
           >
-            {isMonitoringActive
-              ? "Monitoramento Ativo"
-              : "Monitoramento Desativado"}
+            {gardenLoading && !hasGarden
+              ? "Consultando status"
+              : gardenLoadError && !hasGarden
+                ? "Status indisponível"
+                : isMonitoringActive
+                  ? "Monitoramento Ativo"
+                  : "Monitoramento Desativado"}
           </Text>
         </View>
 
@@ -387,16 +440,24 @@ export function DashboardScreen({
           <Text style={styles.healthTitle}>
             {isMonitoringActive
               ? health.title
-              : hasGarden
-                ? "Monitoramento desligado"
-                : "Comece sua horta"}
+              : gardenLoading && !hasGarden
+                ? "Consultando sua horta"
+                : gardenLoadError && !hasGarden
+                  ? "Horta indisponível"
+                  : hasGarden
+                    ? "Monitoramento desligado"
+                    : "Comece sua horta"}
           </Text>
           <Text style={styles.healthDescription}>
             {isMonitoringActive
               ? telemetry.statusText
-              : hasGarden
-                ? "Ative o monitoramento para acompanhar os sensores e a saúde das plantas."
-                : "Cadastre sua primeira horta para acompanhar o cultivo pelo app."}
+              : gardenLoading && !hasGarden
+                ? "Carregando o cadastro salvo na sua conta."
+                : gardenLoadError && !hasGarden
+                  ? "Não foi possível consultar o servidor. Tente novamente mais tarde."
+                  : hasGarden
+                    ? "Ative o monitoramento para acompanhar os sensores e a saúde das plantas."
+                    : "Cadastre sua primeira horta para acompanhar o cultivo pelo app."}
           </Text>
 
           {isMonitoringActive ? (
@@ -434,8 +495,12 @@ export function DashboardScreen({
               />
               <Text style={styles.healthOffFooterText}>
                 {hasGarden
-                  ? "Ative quando quiser acompanhar sua horta"
-                  : "Adicione uma horta para começar"}
+                  ? "Conecte um sensor antes de ativar"
+                  : gardenLoading
+                    ? "Consultando cadastro..."
+                    : gardenLoadError
+                      ? "Status indisponível"
+                      : "Adicione uma horta para começar"}
               </Text>
             </View>
           )}
@@ -551,7 +616,11 @@ export function DashboardScreen({
                 ? health.isHealthy
                   ? "Normal"
                   : "Atenção"
-                : "Off"}
+                : gardenLoading && !hasGarden
+                  ? "..."
+                  : gardenLoadError && !hasGarden
+                    ? "—"
+                    : "Off"}
             </Text>
           </View>
         </View>
